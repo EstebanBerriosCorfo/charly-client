@@ -1,0 +1,21 @@
+charly:
+  environment: prod
+  base_url:
+    prod: https://app.charly.io/api/v1
+    beta: https://beta.charly.io/api/v1
+
+  http:
+    timeout_seconds: 30
+
+  rate_limit:
+    max_retries: 3
+    base_backoff_seconds: 2
+    max_backoff_seconds: 30
+
+  execution:
+    fail_fast: true
+    log_level: INFO
+
+  features:
+    extract_programs: true
+    extract_kpis: true
