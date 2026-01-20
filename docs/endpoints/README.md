@@ -62,6 +62,9 @@ La numeración de los documentos sigue la convención de los scripts en `scripts
   - **Incluye todas las postulaciones asociadas**
   - Filtro por estado de postulación de empresa
   - **Scripts:** `04_02_programs_by_id.py`, `05_00_program_applications_index.py`
+  - **Scripts avanzados:**
+    - `05_02_applications_by_program_id.py` → Obtener todas las postulaciones con respuestas completas
+    - `05_03_applications_by_program_id_applied.py` → Obtener solo postulaciones aplicadas (status="applied")
 
 ### Postulaciones (Applications)
 
@@ -71,24 +74,29 @@ La numeración de los documentos sigue la convención de los scripts en `scripts
   - ⚠️ `include_data=true` es costoso (incluye respuestas completas)
   - **Script:** `05_01_applications.py`
 
-- **[05_02_GET_applications_by_id](05_02_GET_applications_by_id.md)** - Obtener postulación completa
+- **[05_02_GET_applications_by_program_id](05_02_GET_applications_by_program_id.md)** - Obtener postulaciones de un programa completo
   - Detalle completo de una postulación
   - **Incluye todas las respuestas (form_answers y field_answers)**
   - Incluye evaluaciones
-  - **Script:** No hay script directo (usado en orquestación)
+  - **Script:** `05_02_applications_by_program_id.py` - Obtener todas las postulaciones de un programa con respuestas completas
+    - Procesamiento paralelo optimizado (25 workers)
+    - Barra de progreso visual con porcentaje y estadísticas
+    - Exportación a Excel con todas las columnas
+    - Manejo automático de columnas duplicadas
 
-### KPIs y Métricas
-
-- **[06_01_GET_mgr_fields](06_01_GET_mgr_fields.md)** - Listar KPIs por organización
-  - Listado paginado de KPIs
-  - Metadata de campos/métricas
-  - **Script:** `06_kpis.py`
-
-- **[06_02_GET_mgr_fields_by_id](06_02_GET_mgr_fields_by_id.md)** - Obtener KPI con data agregada
-  - Detalle completo de un KPI
-  - **Incluye data agregada (series, distribuciones)**
-  - Formato compatible con gráficos (Chart.js)
-  - **Script:** No hay script directo (usado en orquestación)
+- **[05_03_GET_applications_by_program_id_applied](05_03_GET_applications_by_program_id_applied.md)** - Obtener postulaciones aplicadas de un programa
+  - Variante del script 05_02 con filtro por status
+  - **Filtro:** Solo procesa aplicaciones con `application_status == "applied"`
+  - **Incluye todas las respuestas (form_answers y field_answers)**
+  - **Script:** `05_03_applications_by_program_id_applied.py` - Obtener postulaciones aplicadas de un programa con respuestas completas
+    - Procesamiento paralelo optimizado (25 workers)
+    - Barra de progreso visual con porcentaje y estadísticas
+    - Exportación a Excel con todas las columnas (incluyendo campos vacíos)
+    - Manejo automático de columnas duplicadas con renombrado secuencial
+    - Muestra estadísticas de aplicaciones filtradas vs totales
+    - Guardado de progreso para reanudación
+    - Validación de datos y detección de discrepancias
+    - Rendimiento: 10-12 aplicaciones/segundo
 
 ---
 
@@ -130,11 +138,13 @@ GET /programs/{id} → obtener convocatoria con postulaciones
 GET /applications/{id} → obtener postulación completa
 ```
 
-### 4. Análisis de KPIs
-```
-GET /mgr/fields?organization_id=X → listar KPIs
-GET /mgr/fields/{id}?organization_id=X → obtener KPI con data
-```
+**Scripts avanzados para procesamiento masivo:**
+- `05_02_applications_by_program_id.py` → Obtener todas las postulaciones de un programa
+- `05_03_applications_by_program_id_applied.py` → Obtener solo postulaciones aplicadas (status="applied")
+
+**Scripts avanzados para procesamiento masivo:**
+- `05_02_applications_by_program_id.py` → Obtener todas las postulaciones de un programa
+- `05_03_applications_by_program_id_applied.py` → Obtener solo postulaciones aplicadas (status="applied")
 
 ---
 
@@ -152,21 +162,25 @@ GET /mgr/fields/{id}?organization_id=X → obtener KPI con data
 - `GET /programs` → [04_01_GET_programs.md](04_01_GET_programs.md)
 - `GET /programs/{id}` → [04_02_GET_programs_by_id.md](04_02_GET_programs_by_id.md)
 - `GET /applications` → [05_01_GET_applications.md](05_01_GET_applications.md)
-- `GET /applications/{id}` → [05_02_GET_applications_by_id.md](05_02_GET_applications_by_id.md)
-- `GET /mgr/fields` → [06_01_GET_mgr_fields.md](06_01_GET_mgr_fields.md)
-- `GET /mgr/fields/{id}` → [06_02_GET_mgr_fields_by_id.md](06_02_GET_mgr_fields_by_id.md)
+- `GET /applications/{id}` → [05_02_GET_applications_by_program_id.md](05_02_GET_applications_by_program_id.md)
 
 ### Endpoints Paginados
 - `GET /organizations` → [02_01_GET_organizations.md](02_01_GET_organizations.md)
 - `GET /companies` → [03_01_GET_companies.md](03_01_GET_companies.md)
 - `GET /programs` → [04_01_GET_programs.md](04_01_GET_programs.md)
 - `GET /applications` → [05_01_GET_applications.md](05_01_GET_applications.md)
-- `GET /mgr/fields` → [06_01_GET_mgr_fields.md](06_01_GET_mgr_fields.md)
 
 ### Endpoints con Data Completa
 - `GET /programs/{id}` → [04_02_GET_programs_by_id.md](04_02_GET_programs_by_id.md) - Incluye applications
-- `GET /applications/{id}` → [05_02_GET_applications_by_id.md](05_02_GET_applications_by_id.md) - Incluye form_answers y field_answers
-- `GET /mgr/fields/{id}` → [06_02_GET_mgr_fields_by_id.md](06_02_GET_mgr_fields_by_id.md) - Incluye data agregada
+- `GET /applications/{id}` → [05_02_GET_applications_by_program_id.md](05_02_GET_applications_by_program_id.md) - Incluye form_answers y field_answers
+
+### Scripts de Procesamiento Masivo
+- `05_02_applications_by_program_id.py` → [05_02_GET_applications_by_program_id.md](05_02_GET_applications_by_program_id.md)
+  - Obtiene todas las postulaciones de un programa con respuestas completas
+  - Procesamiento paralelo (25 workers), barra de progreso, exportación a Excel
+- `05_03_applications_by_program_id_applied.py` → [05_03_GET_applications_by_program_id_applied.md](05_03_GET_applications_by_program_id_applied.md)
+  - Obtiene solo postulaciones aplicadas (filtro: `application_status == "applied"`)
+  - Mismo procesamiento optimizado que 05_02 con filtro adicional
 
 ---
 

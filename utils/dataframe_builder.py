@@ -255,6 +255,90 @@ def build_applications_dataframe(applications: List[Dict[str, Any]]) -> pd.DataF
             # Esto es normal cuando múltiples field_names tienen la misma pregunta
             pass
         
+        # LIMPIAR NOMBRES DE COLUMNAS: Truncar y eliminar caracteres problemáticos
+        # Excel tiene límites: 255 caracteres máximo, algunos caracteres están prohibidos
+        MAX_COLUMN_LENGTH = 100  # Límite conservador para Excel
+        PROBLEMATIC_CHARS = ['/', '\\', '?', '*', '[', ']', ':']  # Caracteres problemáticos en Excel
+        
+        cleaned_column_names = {}
+        for field_key, col_name in field_to_column_name.items():
+            cleaned_name = col_name
+            
+            # Reemplazar caracteres problemáticos
+            for char in PROBLEMATIC_CHARS:
+                cleaned_name = cleaned_name.replace(char, '_')
+            
+            # Truncar si es muy largo
+            if len(cleaned_name) > MAX_COLUMN_LENGTH:
+                # Mantener los últimos caracteres para preservar identificadores únicos
+                cleaned_name = cleaned_name[:MAX_COLUMN_LENGTH]
+            
+            # Asegurar que no esté vacío
+            if not cleaned_name or cleaned_name.strip() == '':
+                cleaned_name = field_key[:MAX_COLUMN_LENGTH] if field_key else f"field_{field_key}"
+            
+            cleaned_column_names[field_key] = cleaned_name
+        
+        # Actualizar mapeo con nombres limpios
+        field_to_column_name = cleaned_column_names
+        
+        # VERIFICAR Y RENOMBRAR COLUMNAS DUPLICADAS CON NÚMEROS SECUENCIALES
+        # Esto asegura que todas las columnas se incluyan, incluso si tienen el mismo nombre después de la limpieza
+        column_name_counts = defaultdict(list)
+        for field_key, col_name in field_to_column_name.items():
+            column_name_counts[col_name].append(field_key)
+        
+        # Renombrar duplicados agregando números secuenciales
+        final_column_names = {}
+        for col_name, fields in column_name_counts.items():
+            if len(fields) == 1:
+                # Sin duplicados: usar el nombre original
+                final_column_names[fields[0]] = col_name
+            else:
+                # Hay duplicados: renombrar con números secuenciales
+                for idx, field_key in enumerate(fields, start=1):
+                    if idx == 1:
+                        # Primera columna mantiene el nombre original
+                        final_column_names[field_key] = col_name
+                    else:
+                        # Columnas siguientes: agregar número
+                        # Truncar si es necesario para dejar espacio para el número
+                        base_name = col_name
+                        max_base_length = MAX_COLUMN_LENGTH - 5  # Dejar espacio para " _N"
+                        
+                        if len(base_name) > max_base_length:
+                            base_name = base_name[:max_base_length]
+                        
+                        numbered_name = f"{base_name}_{idx}"
+                        final_column_names[field_key] = numbered_name
+        
+        # Actualizar mapeo final
+        field_to_column_name = final_column_names
+        
+        # FUNCIÓN PARA LIMPIAR VALORES (definida antes de usarse)
+        def clean_value(value):
+            """Convierte valores complejos a strings para inserción segura en Excel"""
+            if value is None:
+                return None
+            elif isinstance(value, (list, dict)):
+                # Convertir listas y dicts a JSON string
+                import json
+                try:
+                    return json.dumps(value, ensure_ascii=False)
+                except:
+                    return str(value)
+            elif isinstance(value, (int, float, bool)):
+                return value
+            elif isinstance(value, str):
+                # Limpiar strings muy largos (Excel tiene límite de ~32,767 caracteres por celda)
+                MAX_CELL_LENGTH = 32000
+                if len(value) > MAX_CELL_LENGTH:
+                    return value[:MAX_CELL_LENGTH] + "... [truncado]"
+                return value
+            else:
+                # Cualquier otro tipo: convertir a string
+                return str(value)
+        
         # Ahora procesar respuestas usando el mapeo
         for field_key in all_field_names:
             column_name = field_to_column_name[field_key]
@@ -268,17 +352,35 @@ def build_applications_dataframe(applications: List[Dict[str, Any]]) -> pd.DataF
                 # No hay respuestas: crear columna vacía
                 base[column_name] = None
             elif len(non_empty_answers) == 1:
-                # Una sola respuesta
-                base[column_name] = non_empty_answers[0]
+                # Una sola respuesta: limpiar valor
+                base[column_name] = clean_value(non_empty_answers[0])
             else:
                 # Múltiples respuestas: crear columnas numeradas
                 # Primera columna sin número
-                base[column_name] = non_empty_answers[0]
+                base[column_name] = clean_value(non_empty_answers[0])
                 
                 # Columnas adicionales numeradas
+                # IMPORTANTE: Verificar que las columnas numeradas no entren en conflicto
+                # con otras columnas existentes
+                existing_columns = set(base.keys())
                 for idx, answer in enumerate(non_empty_answers[1:], start=2):
                     numbered_column = f"{column_name} {idx}"
-                    base[numbered_column] = answer
+                    # Limpiar nombre de columna numerada también
+                    if len(numbered_column) > MAX_COLUMN_LENGTH:
+                        numbered_column = numbered_column[:MAX_COLUMN_LENGTH]
+                    
+                    # Si la columna numerada ya existe, agregar sufijo adicional
+                    original_numbered = numbered_column
+                    suffix_counter = 1
+                    while numbered_column in existing_columns:
+                        numbered_column = f"{original_numbered}_dup{suffix_counter}"
+                        suffix_counter += 1
+                        # Truncar si es necesario
+                        if len(numbered_column) > MAX_COLUMN_LENGTH:
+                            numbered_column = numbered_column[:MAX_COLUMN_LENGTH]
+                    
+                    base[numbered_column] = clean_value(answer)
+                    existing_columns.add(numbered_column)
 
         rows.append(base)
 
@@ -305,5 +407,35 @@ def build_applications_dataframe(applications: List[Dict[str, Any]]) -> pd.DataF
     
     # Reordenar DataFrame
     df = df[metadata_cols + response_cols]
+    
+    # VERIFICACIÓN FINAL: Renombrar columnas duplicadas en el DataFrame final
+    # Esto asegura que todas las columnas se incluyan, incluso si hay duplicados
+    if len(df.columns) != len(set(df.columns)):
+        # Hay columnas duplicadas: renombrarlas con números secuenciales
+        seen_columns = {}
+        new_columns = []
+        
+        for col in df.columns:
+            if col in seen_columns:
+                # Columna duplicada: agregar número
+                seen_columns[col] += 1
+                counter = seen_columns[col]
+                
+                # Truncar nombre base si es necesario
+                base_name = col
+                max_base_length = MAX_COLUMN_LENGTH - 10  # Dejar espacio para " _dupN"
+                
+                if len(base_name) > max_base_length:
+                    base_name = base_name[:max_base_length]
+                
+                new_col_name = f"{base_name}_dup{counter}"
+                new_columns.append(new_col_name)
+            else:
+                # Primera ocurrencia: mantener nombre original
+                seen_columns[col] = 0
+                new_columns.append(col)
+        
+        # Renombrar columnas en el DataFrame
+        df.columns = new_columns
     
     return df

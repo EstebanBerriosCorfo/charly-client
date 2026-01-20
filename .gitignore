@@ -139,3 +139,7 @@ _charly_secrets/
 downloads/*.xlsx
 *.xlsx
 !requirements.txt
+
+# DOWNLOADS
+downloads/
+

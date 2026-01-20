@@ -4,6 +4,15 @@
 
 Obtiene el detalle completo de una postulación específica, incluyendo **todas las respuestas (form_answers y field_answers)** y evaluaciones. Este es el endpoint más completo para obtener información detallada de una postulación.
 
+**Script de uso masivo:** `05_02_GET_applications_by_program_id.py` - Permite obtener **todas las postulaciones de un programa completo** con las siguientes características:
+
+- **Procesamiento paralelo optimizado**: 25 workers simultáneos para máxima velocidad (~10-12 aplicaciones/segundo)
+- **Barra de progreso visual**: Muestra porcentaje, contador de filas procesadas, estadísticas (exitosas/fallidas), tasa de procesamiento y ETA
+- **Exportación a Excel**: Genera archivo Excel con todas las columnas disponibles, incluyendo campos vacíos
+- **Manejo automático de columnas duplicadas**: Renombra automáticamente columnas con el mismo nombre agregando números secuenciales (_2, _3, etc.)
+- **Guardado de progreso**: Permite reanudar el procesamiento si se interrumpe
+- **Validación de datos**: Detecta y reporta discrepancias entre datos procesados y exportados
+
 ---
 
 ## Especificación Técnica
@@ -466,5 +475,13 @@ print(normalized.keys())
 ## Referencias
 
 - **Implementación:** `services/application_service.py` - Clase `ApplicationService`
-- **Normalización:** `analytics/application_normalizer.py` - Clase `ApplicationNormalizer`
-- **Scripts:** Ver scripts en `scripts/05_*` para ejemplos de uso
+- **Normalización:** `utils/dataframe_builder.py` - Función `build_applications_dataframe`
+- **Exportación:** `utils/excel_exporter.py` - Función `export_applications_dataframe_to_excel`
+- **Script Principal:** 
+  - `scripts/05_02_GET_applications_by_program_id.py` - Obtener todas las postulaciones de un programa con respuestas completas
+    - Procesamiento paralelo optimizado (25 workers simultáneos)
+    - Barra de progreso visual con porcentaje y estadísticas
+    - Exportación a Excel con todas las columnas (incluyendo campos vacíos)
+    - Manejo automático de columnas duplicadas con renombrado secuencial
+    - Guardado de progreso para reanudar procesamiento
+    - Validación de datos y detección de discrepancias
