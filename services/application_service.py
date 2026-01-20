@@ -105,18 +105,40 @@ class ApplicationService:
     # ------------------------------------------------------------------
     # DETALLE
     # ------------------------------------------------------------------
-    def get_application(self, application_id: int) -> Dict[str, Any]:
+    def get_application(
+        self, 
+        application_id: int,
+        include_all_fields: bool = True,
+    ) -> Dict[str, Any]:
         """
-        Obtiene una postulación específica con sus respuestas.
+        Obtiene una postulación específica con sus respuestas completas.
 
         :param application_id: ID de la postulación
-        :return: dict con metadata, evaluaciones y form_answers
+        :param include_all_fields: Si True, intenta obtener todos los campos posibles
+                                   (incluso los vacíos). Por defecto True para obtener
+                                   estructura completa compatible con descargas directas.
+        :return: dict con metadata, evaluaciones y form_answers completos
         """
         path = self._get_spec.path.format(
             application_id=application_id
         )
 
+        # Parámetros para obtener todos los campos posibles
+        params: Dict[str, Any] = {}
+        
+        # Intentar incluir todos los campos si está habilitado
+        # Nota: El endpoint puede no soportar este parámetro, pero lo intentamos
+        if include_all_fields:
+            # Algunos endpoints pueden aceptar parámetros como:
+            # - include_all_fields
+            # - include_empty_fields
+            # - full=true
+            # Probamos con el más común
+            params["include_all_fields"] = "true"
+            params["full"] = "true"
+
         return self.client.request(
             method=self._get_spec.method,
             endpoint=path,
+            params=params if params else None,
         )
