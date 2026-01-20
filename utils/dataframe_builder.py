@@ -8,7 +8,10 @@ from typing import Dict, Any, List
 from collections import defaultdict
 
 
-def build_applications_dataframe(applications: List[Dict[str, Any]]) -> pd.DataFrame:
+def build_applications_dataframe(
+    applications: List[Dict[str, Any]], 
+    additional_field_names: set = None
+) -> pd.DataFrame:
     """
     Convierte la lista de postulaciones (include_data=true)
     en un DataFrame plano:
@@ -22,11 +25,16 @@ def build_applications_dataframe(applications: List[Dict[str, Any]]) -> pd.DataF
     
     IMPORTANTE: Crea columnas para TODOS los field_names únicos encontrados
     en TODAS las aplicaciones, incluso si una aplicación específica no tiene ese campo.
+    
+    Args:
+        applications: Lista de aplicaciones completas con form_answers
+        additional_field_names: Set opcional de field_names adicionales a incluir
+                                (útil para incluir campos de otras aplicaciones)
     """
 
     # PASO 1: Recolectar TODOS los field_names únicos de TODAS las aplicaciones
     # Esto asegura que tengamos columnas para todos los campos posibles
-    all_field_names = set()
+    all_field_names = set(additional_field_names) if additional_field_names else set()
     field_metadata_global = {}  # Metadata global de todos los field_names
     
     for app in applications:
