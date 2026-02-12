@@ -71,11 +71,12 @@ class CharlyApiClient:
         method = method.upper()
         params = params or {}
         json_body = json_body or {}
+        endpoint_path = urllib.parse.urlsplit(endpoint).path or endpoint
 
         # --------------------------------------------------------------
         # Inyección de API KEY según contrato Charly
         # --------------------------------------------------------------
-        if endpoint != "/sessions":
+        if endpoint_path != "/sessions":
             if method == "GET":
                 params["api_key"] = self.api_key
             else:
@@ -159,10 +160,23 @@ class CharlyApiClient:
     # HELPERS INTERNOS
     # ------------------------------------------------------------------
     def _build_url(self, endpoint: str, params: Dict[str, Any]) -> str:
-        query = urllib.parse.urlencode(params)
-        if query:
-            return f"{self.base_url}{endpoint}?{query}"
-        return f"{self.base_url}{endpoint}"
+        # Soporta:
+        # - endpoint relativo: /programs
+        # - endpoint relativo con query: /programs?page=2
+        # - endpoint absoluto: https://.../programs?page=2
+        if endpoint.startswith("http://") or endpoint.startswith("https://"):
+            base_target = endpoint
+        else:
+            base_target = f"{self.base_url}{endpoint}"
+
+        parsed = urllib.parse.urlsplit(base_target)
+        existing_query = dict(urllib.parse.parse_qsl(parsed.query, keep_blank_values=True))
+        merged_query = {**existing_query, **params}
+        query = urllib.parse.urlencode(merged_query)
+
+        return urllib.parse.urlunsplit(
+            (parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment)
+        )
 
     def _build_body(self, method: str, json_body: Dict[str, Any]) -> Optional[bytes]:
         if method in {"POST", "PUT", "DELETE"}:
