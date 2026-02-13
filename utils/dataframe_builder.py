@@ -380,10 +380,19 @@ def build_applications_dataframe(
                     # Si la columna numerada ya existe, agregar sufijo adicional
                     original_numbered = numbered_column
                     suffix_counter = 1
-                    while numbered_column in existing_columns:
-                        numbered_column = f"{original_numbered}_dup{suffix_counter}"
+                    max_attempts = 10000
+                    while numbered_column in existing_columns and suffix_counter <= max_attempts:
+                        suffix = f"_dup{suffix_counter}"
+                        max_base_length = MAX_COLUMN_LENGTH - len(suffix)
+                        if max_base_length < 1:
+                            max_base_length = 1
+                        base_truncated = original_numbered[:max_base_length]
+                        numbered_column = f"{base_truncated}{suffix}"
                         suffix_counter += 1
-                        # Truncar si es necesario
+                    
+                    # Fallback defensivo para evitar loop infinito en casos extremos
+                    if numbered_column in existing_columns:
+                        numbered_column = f"col_{field_key}_{idx}"
                         if len(numbered_column) > MAX_COLUMN_LENGTH:
                             numbered_column = numbered_column[:MAX_COLUMN_LENGTH]
                     

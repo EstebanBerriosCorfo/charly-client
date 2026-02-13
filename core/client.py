@@ -39,6 +39,7 @@ class CharlyApiClient:
         base_url: str,
         timeout: int = 120,
         rate_limit_handler: Optional[RateLimitHandler] = None,
+        user_agent: Optional[str] = None,
     ):
         if not api_key:
             raise AuthError(message="API key no proporcionada al inicializar el cliente")
@@ -47,6 +48,11 @@ class CharlyApiClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.rate_limit_handler = rate_limit_handler or RateLimitHandler()
+        self.user_agent = user_agent or (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
+        )
 
     # ------------------------------------------------------------------
     # MÉTODO PRINCIPAL
@@ -88,7 +94,7 @@ class CharlyApiClient:
         request = urllib.request.Request(
             url=url,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers=self._build_headers(method=method, endpoint_path=endpoint_path),
             method=method,
         )
 
@@ -182,6 +188,28 @@ class CharlyApiClient:
         if method in {"POST", "PUT", "DELETE"}:
             return json.dumps(json_body).encode("utf-8")
         return None
+
+    def _build_headers(self, method: str, endpoint_path: str) -> Dict[str, str]:
+        parsed = urllib.parse.urlsplit(self.base_url)
+        origin = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+        referer = f"{origin}/"
+
+        headers: Dict[str, str] = {
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "es-CL,es;q=0.9,en;q=0.8",
+            "Origin": origin,
+            "Referer": referer,
+            "User-Agent": self.user_agent,
+        }
+
+        if method in {"POST", "PUT", "DELETE"}:
+            headers["Content-Type"] = "application/json"
+
+        if endpoint_path != "/sessions":
+            headers["Authorization"] = f"Bearer {self.api_key}"
+            headers["X-API-Key"] = self.api_key
+
+        return headers
 
     def _handle_http_error(
         self,

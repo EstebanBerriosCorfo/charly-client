@@ -117,6 +117,7 @@ def save_api_key(system_user: str, api_key: str):
         encoding="utf-8"
     )
     print(f"[OK] API key guardada para usuario: {system_user}")
+    print(f"[OK] API key guardada en sistema: {api_key}")
 
 
 def validate_existing_api_key(base_url: str, timeout: int, api_key: str) -> tuple[bool, dict | None]:
@@ -213,7 +214,7 @@ def main():
         auth = CharlyAuth(base_url=base_url, timeout=timeout)
         api_key = auth.create_session(username=username, password=password)
         print(f"[OK] Login exitoso!")
-        print(f"[OK] API Key obtenida: {api_key[:20]}...")
+        print(f"[OK] API Key obtenida: {api_key}")
     except AuthError as e:
         print(f"[ERROR] Error de autenticación: {e.message}")
         if getattr(e, "status_code", None) is not None:
@@ -272,7 +273,7 @@ def main():
     print()
     print(f"Usuario del sistema: {system_user}")
     print(f"Usuario Charly: {username}")
-    print(f"API Key guardada: {api_key[:20]}...")
+    print(f"API Key guardada: {api_key}")
     print()
     print("Archivos creados/modificados:")
     print(f"  - {get_credential_store_path()}")

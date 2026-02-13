@@ -6,6 +6,7 @@
 # ================================================================
 
 import json
+import urllib.parse
 import urllib.request
 import urllib.error
 from typing import Optional
@@ -27,9 +28,19 @@ class CharlyAuth:
     - Aplica retries (eso vive en client / utils)
     """
 
-    def __init__(self, base_url: str, timeout: int = 30):
+    def __init__(
+        self,
+        base_url: str,
+        timeout: int = 30,
+        user_agent: Optional[str] = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.user_agent = user_agent or (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
+        )
 
     def create_session(self, username: str, password: str) -> str:
         """
@@ -53,9 +64,7 @@ class CharlyAuth:
         request = urllib.request.Request(
             url=url,
             data=data,
-            headers={
-                "Content-Type": "application/json"
-            },
+            headers=self._build_session_headers(),
             method="POST"
         )
 
@@ -112,3 +121,20 @@ class CharlyAuth:
                 method="POST",
                 details=str(e)
             )
+
+    def _build_session_headers(self) -> dict:
+        """
+        Construye headers para /sessions compatibles con protecciones WAF.
+        """
+        parsed = urllib.parse.urlsplit(self.base_url)
+        origin = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+        referer = f"{origin}/"
+
+        return {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "es-CL,es;q=0.9,en;q=0.8",
+            "Origin": origin,
+            "Referer": referer,
+            "User-Agent": self.user_agent,
+        }
