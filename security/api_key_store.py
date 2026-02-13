@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, Any
 
 
@@ -37,7 +37,7 @@ class ApiKeyStore:
 
         data[system_user] = {
             "api_key": api_key,
-            "updated_at": datetime.utcnow().isoformat()
+            "updated_at": datetime.now(UTC).isoformat()
         }
 
         self._write_all(data)

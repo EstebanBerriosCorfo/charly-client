@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, Optional
 
 
@@ -128,7 +128,7 @@ class StructuredLogger:
         extra: Optional[Dict[str, Any]],
     ) -> None:
         log_record: Dict[str, Any] = {
-            "timestamp": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "timestamp": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
             "level": level,
             "message": message,
         }

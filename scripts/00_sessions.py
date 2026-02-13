@@ -26,10 +26,11 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from security.user_resolver import SystemUserResolver
 from security.paths import get_credential_store_path, get_api_key_store_path
+from security.secret_protector import SecretProtector
 from core.auth import CharlyAuth
 from core.client import CharlyApiClient
 from config.config_loader import ConfigLoader
-from core.exceptions import AuthError
+from core.exceptions import AuthError, CharlyApiError, RateLimitError
 from services.user_service import UserService
 
 # ------------------------------------------------------------------
@@ -80,7 +81,7 @@ def save_credentials(system_user: str, username: str, password: str):
     
     data[system_user] = {
         "username": username,
-        "password": password
+        "password_encrypted": SecretProtector.encrypt(password),
     }
     
     users_file.write_text(
@@ -117,7 +118,6 @@ def save_api_key(system_user: str, api_key: str):
         encoding="utf-8"
     )
     print(f"[OK] API key guardada para usuario: {system_user}")
-    print(f"[OK] API key guardada en sistema: {api_key}")
 
 
 def validate_existing_api_key(base_url: str, timeout: int, api_key: str) -> tuple[bool, dict | None]:
@@ -128,7 +128,7 @@ def validate_existing_api_key(base_url: str, timeout: int, api_key: str) -> tupl
         client = CharlyApiClient(api_key=api_key, base_url=base_url, timeout=timeout)
         current_user = UserService(client).get_current_user()
         return True, current_user
-    except Exception:
+    except (AuthError, CharlyApiError, RateLimitError):
         return False, None
 
 # ------------------------------------------------------------------
@@ -160,7 +160,25 @@ def main():
         use_existing = input("¿Desea usar las credenciales existentes? [S/n]: ").strip().lower()
         if use_existing != "n":
             username = existing_credentials[system_user]["username"]
-            password = existing_credentials[system_user]["password"]
+            stored_password = existing_credentials[system_user].get("password")
+            stored_password_encrypted = existing_credentials[system_user].get("password_encrypted")
+
+            if stored_password_encrypted:
+                try:
+                    password = SecretProtector.decrypt(stored_password_encrypted)
+                except Exception:
+                    print("[WARN] No fue posible desencriptar password almacenado. Ingrese credenciales nuevamente.")
+                    username = input("Username (email): ").strip()
+                    password = getpass.getpass("Password: ").strip()
+                    save_credentials(system_user, username, password)
+            elif stored_password:
+                # Compatibilidad con formato histórico + migración inmediata.
+                password = stored_password
+                save_credentials(system_user, username, password)
+            else:
+                print("[INFO] No hay password almacenado para este usuario.")
+                password = getpass.getpass("Password: ").strip()
+                save_credentials(system_user, username, password)
             print(f"[OK] Usando credenciales existentes para: {username}")
         else:
             # Solicitar nuevas credenciales
@@ -214,7 +232,6 @@ def main():
         auth = CharlyAuth(base_url=base_url, timeout=timeout)
         api_key = auth.create_session(username=username, password=password)
         print(f"[OK] Login exitoso!")
-        print(f"[OK] API Key obtenida: {api_key}")
     except AuthError as e:
         print(f"[ERROR] Error de autenticación: {e.message}")
         if getattr(e, "status_code", None) is not None:
