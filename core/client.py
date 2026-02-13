@@ -39,6 +39,7 @@ class CharlyApiClient:
         base_url: str,
         timeout: int = 120,
         rate_limit_handler: Optional[RateLimitHandler] = None,
+        user_agent: Optional[str] = None,
     ):
         if not api_key:
             raise AuthError(message="API key no proporcionada al inicializar el cliente")
@@ -47,6 +48,11 @@ class CharlyApiClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.rate_limit_handler = rate_limit_handler or RateLimitHandler()
+        self.user_agent = user_agent or (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
+        )
 
     # ------------------------------------------------------------------
     # MÉTODO PRINCIPAL
@@ -71,11 +77,12 @@ class CharlyApiClient:
         method = method.upper()
         params = params or {}
         json_body = json_body or {}
+        endpoint_path = urllib.parse.urlsplit(endpoint).path or endpoint
 
         # --------------------------------------------------------------
         # Inyección de API KEY según contrato Charly
         # --------------------------------------------------------------
-        if endpoint != "/sessions":
+        if endpoint_path != "/sessions":
             if method == "GET":
                 params["api_key"] = self.api_key
             else:
@@ -87,7 +94,7 @@ class CharlyApiClient:
         request = urllib.request.Request(
             url=url,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers=self._build_headers(method=method, endpoint_path=endpoint_path),
             method=method,
         )
 
@@ -159,15 +166,50 @@ class CharlyApiClient:
     # HELPERS INTERNOS
     # ------------------------------------------------------------------
     def _build_url(self, endpoint: str, params: Dict[str, Any]) -> str:
-        query = urllib.parse.urlencode(params)
-        if query:
-            return f"{self.base_url}{endpoint}?{query}"
-        return f"{self.base_url}{endpoint}"
+        # Soporta:
+        # - endpoint relativo: /programs
+        # - endpoint relativo con query: /programs?page=2
+        # - endpoint absoluto: https://.../programs?page=2
+        if endpoint.startswith("http://") or endpoint.startswith("https://"):
+            base_target = endpoint
+        else:
+            base_target = f"{self.base_url}{endpoint}"
+
+        parsed = urllib.parse.urlsplit(base_target)
+        existing_query = dict(urllib.parse.parse_qsl(parsed.query, keep_blank_values=True))
+        merged_query = {**existing_query, **params}
+        query = urllib.parse.urlencode(merged_query)
+
+        return urllib.parse.urlunsplit(
+            (parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment)
+        )
 
     def _build_body(self, method: str, json_body: Dict[str, Any]) -> Optional[bytes]:
         if method in {"POST", "PUT", "DELETE"}:
             return json.dumps(json_body).encode("utf-8")
         return None
+
+    def _build_headers(self, method: str, endpoint_path: str) -> Dict[str, str]:
+        parsed = urllib.parse.urlsplit(self.base_url)
+        origin = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+        referer = f"{origin}/"
+
+        headers: Dict[str, str] = {
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "es-CL,es;q=0.9,en;q=0.8",
+            "Origin": origin,
+            "Referer": referer,
+            "User-Agent": self.user_agent,
+        }
+
+        if method in {"POST", "PUT", "DELETE"}:
+            headers["Content-Type"] = "application/json"
+
+        if endpoint_path != "/sessions":
+            headers["Authorization"] = f"Bearer {self.api_key}"
+            headers["X-API-Key"] = self.api_key
+
+        return headers
 
     def _handle_http_error(
         self,

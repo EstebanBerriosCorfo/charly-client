@@ -8,7 +8,10 @@ from typing import Dict, Any, List
 from collections import defaultdict
 
 
-def build_applications_dataframe(applications: List[Dict[str, Any]]) -> pd.DataFrame:
+def build_applications_dataframe(
+    applications: List[Dict[str, Any]], 
+    additional_field_names: set = None
+) -> pd.DataFrame:
     """
     Convierte la lista de postulaciones (include_data=true)
     en un DataFrame plano:
@@ -22,11 +25,16 @@ def build_applications_dataframe(applications: List[Dict[str, Any]]) -> pd.DataF
     
     IMPORTANTE: Crea columnas para TODOS los field_names únicos encontrados
     en TODAS las aplicaciones, incluso si una aplicación específica no tiene ese campo.
+    
+    Args:
+        applications: Lista de aplicaciones completas con form_answers
+        additional_field_names: Set opcional de field_names adicionales a incluir
+                                (útil para incluir campos de otras aplicaciones)
     """
 
     # PASO 1: Recolectar TODOS los field_names únicos de TODAS las aplicaciones
     # Esto asegura que tengamos columnas para todos los campos posibles
-    all_field_names = set()
+    all_field_names = set(additional_field_names) if additional_field_names else set()
     field_metadata_global = {}  # Metadata global de todos los field_names
     
     for app in applications:
@@ -372,10 +380,19 @@ def build_applications_dataframe(applications: List[Dict[str, Any]]) -> pd.DataF
                     # Si la columna numerada ya existe, agregar sufijo adicional
                     original_numbered = numbered_column
                     suffix_counter = 1
-                    while numbered_column in existing_columns:
-                        numbered_column = f"{original_numbered}_dup{suffix_counter}"
+                    max_attempts = 10000
+                    while numbered_column in existing_columns and suffix_counter <= max_attempts:
+                        suffix = f"_dup{suffix_counter}"
+                        max_base_length = MAX_COLUMN_LENGTH - len(suffix)
+                        if max_base_length < 1:
+                            max_base_length = 1
+                        base_truncated = original_numbered[:max_base_length]
+                        numbered_column = f"{base_truncated}{suffix}"
                         suffix_counter += 1
-                        # Truncar si es necesario
+                    
+                    # Fallback defensivo para evitar loop infinito en casos extremos
+                    if numbered_column in existing_columns:
+                        numbered_column = f"col_{field_key}_{idx}"
                         if len(numbered_column) > MAX_COLUMN_LENGTH:
                             numbered_column = numbered_column[:MAX_COLUMN_LENGTH]
                     
