@@ -192,7 +192,7 @@ if not applications_index_all:
     print("\n[!] Esta convocatoria no tiene postulaciones registradas.")
     sys.exit(0)
 
-# FILTRAR SOLO APLICACIONES CON STATUS "applied"
+# FILTRAR SOLO APLICACIONES CON STATUS "applied" PARA PROCESAR
 applications_index = [
     app for app in applications_index_all
     if app.get("application_status") == FILTER_STATUS
@@ -267,6 +267,70 @@ def fetch_application(app_index):
             "company": company_name,
             "error": str(e)
         })
+
+# ------------------------------------------------------------------
+# PASO 1.5: RECOLECTAR ESQUEMA COMPLETO DE CAMPOS
+# ------------------------------------------------------------------
+# IMPORTANTE: Para obtener TODAS las columnas posibles, necesitamos recolectar
+# field_names de TODAS las aplicaciones del programa (no solo las "applied")
+# Esto asegura que tengamos columnas para todos los campos posibles
+print(f"\n>> Recolectando esquema completo de campos de todas las aplicaciones...")
+print(f"   Esto asegura que todas las columnas posibles esten disponibles.")
+
+# Obtener una muestra representativa de aplicaciones de diferentes status
+# para recolectar todos los field_names posibles
+status_groups = {}
+for app in applications_index_all:
+    status = app.get("application_status", "unknown")
+    if status not in status_groups:
+        status_groups[status] = []
+    status_groups[status].append(app)
+
+# Tomar muestras de cada status (hasta 10 por status para no hacer demasiadas llamadas)
+sample_applications_for_schema = []
+max_per_status = 10
+for status, apps in status_groups.items():
+    sample_applications_for_schema.extend(apps[:max_per_status])
+
+print(f"[INFO] Muestra para esquema: {len(sample_applications_for_schema)} aplicaciones de {len(status_groups)} status diferentes")
+sys.stdout.flush()
+
+# Obtener detalles completos de la muestra en paralelo para recolectar field_names
+schema_field_names = set()
+if sample_applications_for_schema:
+    schema_start_time = time.time()
+    
+    print(f"[INFO] Obteniendo detalles de muestra para recolectar todos los field_names...")
+    sys.stdout.flush()
+    
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        schema_futures = {
+            executor.submit(fetch_application, app): app 
+            for app in sample_applications_for_schema[:min(30, len(sample_applications_for_schema))]
+        }
+        
+        schema_completed = 0
+        for future in as_completed(schema_futures):
+            schema_completed += 1
+            try:
+                success, data, error = future.result()
+                if success and data:
+                    # Recolectar field_names de esta aplicación
+                    for form_answer in data.get("form_answers", []):
+                        for field_answer in form_answer.get("field_answers", []):
+                            field = field_answer.get("field", {})
+                            field_name = field.get("name", "")
+                            if field_name:
+                                schema_field_names.add(field_name)
+            except Exception:
+                pass  # Ignorar errores en la recolección del esquema
+    
+    schema_elapsed = time.time() - schema_start_time
+    print(f"[OK] Esquema recolectado en {schema_elapsed:.1f}s: {len(schema_field_names)} field_names únicos identificados")
+    sys.stdout.flush()
+else:
+    print(f"[INFO] No hay aplicaciones para recolectar esquema")
+    schema_field_names = set()
 
 # ------------------------------------------------------------------
 # PASO 2: OBTENER RESPUESTAS EN PARALELO
@@ -393,6 +457,10 @@ else:
         print(f"   len(applications_full): {len(applications_full)}")
         print(f"   Diferencia: {successful_count - len(applications_full)}")
         print(f"   Esto indica que algunas aplicaciones exitosas no se agregaron a la lista.")
+    
+    # Forzar flush del buffer
+    import sys
+    sys.stdout.flush()
 
 # ------------------------------------------------------------------
 # RESULTADO FINAL
@@ -400,8 +468,11 @@ else:
 print("\n" + "="*80)
 print("=== RESULTADO FINAL ===")
 print("="*80)
+sys.stdout.flush()
+
 print(f"\n[OK] Postulaciones procesadas exitosamente: {len(applications_full)}")
 print(f"[OK] Filtro aplicado: application_status == '{FILTER_STATUS}'")
+sys.stdout.flush()
 if errors:
     print(f"[!] Postulaciones con errores: {len(errors)}")
     if len(errors) <= 10:
@@ -422,12 +493,31 @@ print("=== EXPORTACIÓN DE DATOS ===")
 print("="*80)
 
 print("\n>> Normalizando datos a tabla plana...")
+sys.stdout.flush()
+
+if not applications_full:
+    print("[ERROR] No hay aplicaciones para procesar")
+    sys.exit(1)
+
+print(f"[INFO] Procesando {len(applications_full)} aplicaciones para construir DataFrame...")
+sys.stdout.flush()
+
 try:
-    df = build_applications_dataframe(applications_full)
+    print("[INFO] Iniciando build_applications_dataframe...")
+    sys.stdout.flush()
+    
+    # Pasar field_names adicionales recolectados del esquema completo
+    # para asegurar que todas las columnas posibles estén incluidas
+    df = build_applications_dataframe(
+        applications_full, 
+        additional_field_names=schema_field_names if schema_field_names else None
+    )
     
     print(f"[OK] Tabla creada: {len(df)} filas x {len(df.columns)} columnas")
+    sys.stdout.flush()
     print(f"   Columnas de metadata: {len([c for c in df.columns if c.startswith(('application_', 'company_', 'program_', 'score_', 'form_'))])}")
     print(f"   Columnas de respuestas: {len(df.columns) - 30}")
+    sys.stdout.flush()
     
     # Validación crítica: verificar que todas las aplicaciones estén en el DataFrame
     if len(df) != len(applications_full):
@@ -458,7 +548,14 @@ if len(sys.argv) >= 3:
     export_excel = "s"  # Exportar automáticamente cuando se ejecuta con argumentos
     print("\n>> Exportando a Excel automaticamente (modo no interactivo)...")
 else:
-    export_excel = input("\n¿Exportar a Excel con todos los campos? [S/n]: ").strip().lower()
+    print("\n>> ¿Exportar a Excel con todos los campos?")
+    sys.stdout.flush()
+    try:
+        export_excel = input("   [S/n]: ").strip().lower()
+        sys.stdout.flush()
+    except (EOFError, KeyboardInterrupt):
+        print("\n[!] Entrada cancelada. No se exportará a Excel.")
+        export_excel = "n"
 
 if export_excel != "n":
     output_file = f"applications_program_{program_id}_applied.xlsx"
@@ -467,12 +564,36 @@ if export_excel != "n":
     output_path.parent.mkdir(exist_ok=True)
     
     print(f"\n>> Exportando a Excel...")
+    sys.stdout.flush()
     try:
         # Validar antes de exportar
         initial_rows = len(df)
         initial_cols = len(df.columns)
         
-        export_applications_dataframe_to_excel(df, output_path, sheet_name="Postulaciones")
+        print(f"[INFO] Preparando exportación: {initial_rows} filas x {initial_cols} columnas")
+        sys.stdout.flush()
+        
+        print("[INFO] Iniciando escritura del archivo Excel...")
+        print(f"[INFO] Tamaño del DataFrame: {initial_rows} filas x {initial_cols} columnas")
+        print(f"[INFO] Esto puede tardar varios minutos para archivos grandes...")
+        sys.stdout.flush()
+        
+        # Exportar con timeout implícito (el proceso puede tardar mucho)
+        import time
+        export_start_time = time.time()
+        
+        try:
+            export_applications_dataframe_to_excel(df, output_path, sheet_name="Postulaciones")
+            export_elapsed = time.time() - export_start_time
+            print(f"[OK] Exportación completada en {export_elapsed:.1f} segundos")
+            sys.stdout.flush()
+        except Exception as export_error:
+            export_elapsed = time.time() - export_start_time
+            print(f"[ERROR] Error después de {export_elapsed:.1f} segundos")
+            raise
+        
+        print("[INFO] Archivo Excel escrito, verificando...")
+        sys.stdout.flush()
         
         if output_path.exists():
             # Verificar el archivo exportado

@@ -446,7 +446,27 @@ if export_excel != "n":
         initial_rows = len(df)
         initial_cols = len(df.columns)
         
-        export_applications_dataframe_to_excel(df, output_path, sheet_name="Postulaciones")
+        print("[INFO] Iniciando escritura del archivo Excel...")
+        print(f"[INFO] Tamaño del DataFrame: {initial_rows} filas x {initial_cols} columnas")
+        print(f"[INFO] Esto puede tardar varios minutos para archivos grandes...")
+        sys.stdout.flush()
+        
+        # Exportar con timeout implícito (el proceso puede tardar mucho)
+        import time
+        export_start_time = time.time()
+        
+        try:
+            export_applications_dataframe_to_excel(df, output_path, sheet_name="Postulaciones")
+            export_elapsed = time.time() - export_start_time
+            print(f"[OK] Exportación completada en {export_elapsed:.1f} segundos")
+            sys.stdout.flush()
+        except Exception as export_error:
+            export_elapsed = time.time() - export_start_time
+            print(f"[ERROR] Error después de {export_elapsed:.1f} segundos")
+            raise
+        
+        print("[INFO] Archivo Excel escrito, verificando...")
+        sys.stdout.flush()
         
         if output_path.exists():
             # Verificar el archivo exportado

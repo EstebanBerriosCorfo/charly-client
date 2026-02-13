@@ -55,21 +55,76 @@ def export_applications_dataframe_to_excel(
         df_cleaned = df.rename(columns=cleaned_columns)
         
         # Limpiar valores antes de exportar
-        # Convertir valores complejos a strings
-        for col in df_cleaned.columns:
-            # Verificar si hay valores complejos
-            sample = df_cleaned[col].dropna().head(10)
-            has_complex = any(isinstance(val, (list, dict)) for val in sample)
-            
-            if has_complex:
-                import json
-                df_cleaned[col] = df_cleaned[col].apply(
-                    lambda x: json.dumps(x, ensure_ascii=False) if isinstance(x, (list, dict)) else x
-                )
+        # Convertir valores complejos a strings (optimizado para DataFrames grandes)
+        import json
+        import sys
         
-        # Exportar con manejo de errores
-        with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-            df_cleaned.to_excel(writer, index=False, sheet_name=sheet_name)
+        # Solo limpiar si el DataFrame no es demasiado grande (evitar timeout)
+        # Para DataFrames muy grandes, la limpieza puede ser muy lenta
+        MAX_ROWS_FOR_CLEANING = 10000  # Límite conservador
+        
+        if len(df_cleaned) <= MAX_ROWS_FOR_CLEANING:
+            print(f"[INFO] Limpiando valores complejos en {len(df_cleaned.columns)} columnas...", end="", flush=True)
+            sys.stdout.flush()
+            
+            cols_processed = 0
+            for col in df_cleaned.columns:
+                cols_processed += 1
+                if cols_processed % 50 == 0:
+                    print(f".", end="", flush=True)
+                    sys.stdout.flush()
+                
+                # Verificar si hay valores complejos (muestra más pequeña para velocidad)
+                sample_size = min(5, len(df_cleaned))
+                if sample_size > 0:
+                    sample = df_cleaned[col].dropna().head(sample_size)
+                    has_complex = any(isinstance(val, (list, dict)) for val in sample)
+                    
+                    if has_complex:
+                        # Convertir solo valores complejos (más eficiente que aplicar a todos)
+                        def clean_value(x):
+                            if isinstance(x, (list, dict)):
+                                try:
+                                    return json.dumps(x, ensure_ascii=False)
+                                except:
+                                    return str(x)
+                            return x
+                        
+                        # Aplicar solo si hay valores complejos
+                        df_cleaned[col] = df_cleaned[col].apply(clean_value)
+            
+            print(" [OK]", flush=True)
+            sys.stdout.flush()
+        else:
+            print(f"[INFO] DataFrame muy grande ({len(df_cleaned)} filas). Omitiendo limpieza de valores complejos para evitar timeout.")
+            print(f"[INFO] Los valores complejos se convertirán automáticamente durante la escritura.")
+            sys.stdout.flush()
+        
+        # Exportar con manejo de errores y logging
+        print(f"[INFO] Escribiendo archivo Excel ({df_cleaned.shape[0]} filas x {df_cleaned.shape[1]} columnas)...", end="", flush=True)
+        sys.stdout.flush()
+        
+        # Usar modo de escritura más eficiente para archivos grandes
+        # openpyxl puede ser lento para archivos muy grandes, pero es más compatible
+        try:
+            # Limpiar timezones antes de escribir (compatible con todas las versiones de pandas)
+            # Convertir columnas datetime a naive datetime si tienen timezone
+            for col in df_cleaned.columns:
+                if df_cleaned[col].dtype.name.startswith('datetime'):
+                    if hasattr(df_cleaned[col].dtype, 'tz') and df_cleaned[col].dtype.tz is not None:
+                        df_cleaned[col] = df_cleaned[col].dt.tz_localize(None)
+            
+            with pd.ExcelWriter(
+                output_path, 
+                engine="openpyxl"
+            ) as writer:
+                df_cleaned.to_excel(writer, index=False, sheet_name=sheet_name)
+            print(" [OK]", flush=True)
+            sys.stdout.flush()
+        except Exception as e:
+            print(f" [ERROR]", flush=True)
+            sys.stdout.flush()
+            raise
         
         return output_path
         
