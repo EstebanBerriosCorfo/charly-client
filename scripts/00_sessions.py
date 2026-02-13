@@ -18,7 +18,7 @@ import sys
 import json
 import getpass
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, UTC
 
 # ⬇️ Fuerza la carpeta donde están core/, services/, orchestration/
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -109,7 +109,7 @@ def save_api_key(system_user: str, api_key: str):
     
     data[system_user] = {
         "api_key": api_key,
-        "updated_at": datetime.utcnow().isoformat()
+        "updated_at": datetime.now(UTC).isoformat()
     }
     
     api_keys_file.write_text(
@@ -270,18 +270,6 @@ def main():
     print("=" * 80)
     print("CONFIGURACIÓN COMPLETADA")
     print("=" * 80)
-    print()
-    print(f"Usuario del sistema: {system_user}")
-    print(f"Usuario Charly: {username}")
-    print(f"API Key guardada: {api_key}")
-    print()
-    print("Archivos creados/modificados:")
-    print(f"  - {get_credential_store_path()}")
-    print(f"  - {get_api_key_store_path()}")
-    print()
-    print("Ahora puede usar el Bootstrap para inicializar el cliente:")
-    print("  from orchestration.bootstrap import Bootstrap")
-    print("  ctx = Bootstrap(config_path=Path('config/charly.yaml')).run()")
 
 if __name__ == "__main__":
     main()

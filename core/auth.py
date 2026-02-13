@@ -96,6 +96,11 @@ class CharlyAuth:
 
                 return api_key
 
+        except AuthError:
+            # Preserva errores de autenticación levantados explícitamente
+            # para que capas superiores (scripts/bootstrap) puedan tratarlos.
+            raise
+
         except urllib.error.HTTPError as e:
             raw_error = e.read().decode("utf-8") if e.fp else None
 
